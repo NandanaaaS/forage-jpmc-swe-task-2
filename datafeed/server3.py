@@ -150,17 +150,19 @@ def order_book(orders, book, stock_name):
 
 def generate_csv():
     """ Generate a CSV of order history. """
-    with open('test.csv', 'wb') as f:
+    with open('test.csv', 'w', newline='') as f:
         writer = csv.writer(f)
+        count = 0  # Added
         for t, stock, side, order, size in orders(market()):
             if t > MARKET_OPEN + SIM_LENGTH:
                 break
             writer.writerow([t, stock, side, order, size])
-
+            count += 1  # Added
+        print(f"Generated {count} lines of data")  # Added
 
 def read_csv():
     """ Read a CSV or order history into a list. """
-    with open('test.csv', 'rt') as f:
+    with open('test.csv', 'r') as f:
         for time, stock, side, order, size in csv.reader(f):
             yield dateutil.parser.parse(time), stock, side, float(order), int(size)
 
@@ -235,13 +237,13 @@ def run(routes, host='0.0.0.0', port=8080):
     thread.daemon = True
     thread.start()
     print('HTTP server started on port 8080')
-    while True:
-        from time import sleep
-        sleep(1)
-    server.shutdown()
-    server.start()
-    server.waitForThread()
-
+    try:
+        while True:
+            from time import sleep
+            sleep(1)
+    except KeyboardInterrupt:
+        server.shutdown()
+        print("Server stopped.")
 
 ################################################################################
 #
@@ -262,7 +264,10 @@ class App(object):
         self._data_1 = order_book(read_csv(), self._book_1, 'ABC')
         self._data_2 = order_book(read_csv(), self._book_2, 'DEF')
         self._rt_start = datetime.now()
-        self._sim_start, _, _ = next(self._data_1)
+        try:
+            self._sim_start, _, _ = next(self._data_1)  # exception handling for StopIteration
+        except StopIteration:
+            self._sim_start, _, _ = datetime.now(), [], []
         self.read_10_first_lines()
 
     @property
@@ -284,9 +289,13 @@ class App(object):
                 yield t, bids, asks
 
     def read_10_first_lines(self):
-        for _ in iter(range(10)):
-            next(self._data_1)
-            next(self._data_2)
+        try:
+            for _ in range(10):
+                print(next(self._data_1))
+        except StopIteration:
+            print("Not enough lines in the CSV file.")
+        except Exception as e:
+            print(f"Error reading lines: {e}")
 
     @route('/query')
     def handle_query(self, x):
